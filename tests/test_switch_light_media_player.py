@@ -255,8 +255,8 @@ def test_tv_exposes_features_and_sends_commands() -> None:
     api = FakeApi({"input": "t"}, {"input": "bs"})
     tv = NatureRemoTV(FakeCoordinator(), api, appliance)  # type: ignore[arg-type]
 
-    assert tv.source == "terrestrial"
-    assert tv.source_list == ["terrestrial", "BS"]
+    assert tv.source == "Terrestrial"
+    assert tv.source_list == ["Terrestrial", "BS"]
     assert tv.supported_features & MediaPlayerEntityFeature.TURN_ON
     assert tv.supported_features & MediaPlayerEntityFeature.VOLUME_STEP
     assert tv.supported_features & MediaPlayerEntityFeature.PLAY

@@ -67,6 +67,11 @@ class NatureRemoAC(NatureRemoBase, ClimateEntity):
     """Implementation of a Nature Remo E sensor."""
 
     _enable_turn_on_off_backwards_compatibility = False
+    # Home Assistant ships translations for the standard fan modes but its
+    # swing modes cover only on/off/both/vertical/horizontal, so Nature Remo's
+    # "auto" and "swing" would otherwise render raw and lowercase next to a
+    # translated "Auto" fan mode.
+    _attr_translation_key = "aircon"
 
     def __init__(
         self,

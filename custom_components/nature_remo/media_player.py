@@ -20,7 +20,7 @@ from . import DOMAIN, NatureRemoAPI, NatureRemoBase
 _LOGGER = logging.getLogger(__name__)
 
 INPUT_TO_SOURCE = {
-    "t": "terrestrial",
+    "t": "Terrestrial",
     "bs": "BS",
     "cs": "CS",
 }

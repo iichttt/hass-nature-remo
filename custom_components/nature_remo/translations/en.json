@@ -30,5 +30,19 @@
         }
       }
     }
+  },
+  "entity": {
+    "climate": {
+      "aircon": {
+        "state_attributes": {
+          "swing_mode": {
+            "state": {
+              "auto": "Auto",
+              "swing": "Swing"
+            }
+          }
+        }
+      }
+    }
   }
 }
