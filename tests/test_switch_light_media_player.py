@@ -299,3 +299,87 @@ def test_light_treats_minimum_brightness_as_on_not_off() -> None:
 
     assert api.calls == [("/appliances/appliance-1/light", {"button": "on"})]
     assert light.is_on is True
+
+
+def _light_appliance(*button_names: str) -> dict[str, Any]:
+    return {
+        "id": "appliance-1",
+        "nickname": "Ceiling Light",
+        "type": "LIGHT",
+        "device": _device(),
+        "light": {
+            "buttons": [{"name": name, "image": "ico", "label": name} for name in button_names],
+            "state": {"power": "off", "brightness": "0", "last_button": "off"},
+        },
+    }
+
+
+def test_light_uses_every_numbered_preset_the_remote_exposes() -> None:
+    appliance = _light_appliance("on", "on-25", "on-50", "on-75", "on-100", "off")
+    api = FakeApi()
+    light = NatureRemoLight(FakeCoordinator(), api, appliance, low_level=20)  # type: ignore[arg-type]
+
+    import asyncio
+
+    assert light.extra_state_attributes["brightness_levels"] == [20, 25, 50, 75, 100]
+
+    # Each request rounds *up* to the nearest reachable level, so the light is
+    # never dimmer than asked for.
+    # 26/255 = 10%, 60/255 = 24%, 128/255 = 50%, 166/255 = 65%, 230/255 = 90%
+    for brightness in (26, 60, 128, 166, 230):
+        asyncio.run(light.async_turn_on(brightness=brightness))
+
+    assert [data["button"] for _, data in api.calls] == [
+        "on",
+        "on-25",
+        "on-50",
+        "on-75",
+        "on-100",
+    ]
+
+
+def test_light_ladder_reproduces_two_bucket_behaviour() -> None:
+    """A plain on/on-100 remote must behave exactly as it did before."""
+    appliance = _light_appliance("on", "on-100", "off")
+    api = FakeApi()
+    light = NatureRemoLight(FakeCoordinator(), api, appliance, low_level=20)  # type: ignore[arg-type]
+
+    import asyncio
+
+    assert light.extra_state_attributes["brightness_levels"] == [20, 100]
+
+    for brightness in (1, 26, 51):
+        asyncio.run(light.async_turn_on(brightness=brightness))
+    for brightness in (53, 128, 255):
+        asyncio.run(light.async_turn_on(brightness=brightness))
+
+    assert [data["button"] for _, data in api.calls] == ["on"] * 3 + ["on-100"] * 3
+
+
+def test_light_with_only_a_plain_on_button_treats_it_as_full() -> None:
+    appliance = _light_appliance("on", "off")
+    api = FakeApi()
+    light = NatureRemoLight(FakeCoordinator(), api, appliance, low_level=20)  # type: ignore[arg-type]
+
+    import asyncio
+
+    # "on" is the only output level, so it is full brightness, not a dim step.
+    assert light.extra_state_attributes["brightness_levels"] == [100]
+
+    asyncio.run(light.async_turn_on(brightness=255))
+
+    assert api.calls == [("/appliances/appliance-1/light", {"button": "on"})]
+    assert light.brightness == 255
+
+
+def test_light_reports_level_reported_by_the_cloud() -> None:
+    appliance = _light_appliance("on", "on-50", "on-100", "off")
+    api = FakeApi({"power": "on", "brightness": "50", "last_button": "on-50"})
+    light = NatureRemoLight(FakeCoordinator(), api, appliance, low_level=20)  # type: ignore[arg-type]
+
+    import asyncio
+
+    asyncio.run(light.async_turn_on(brightness=128))
+
+    assert light.is_on is True
+    assert light.brightness == 128  # 50% of 255

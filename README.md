@@ -21,7 +21,7 @@ This repository is a fork of [yutoyazaki/hass-nature-remo](https://github.com/yu
 | Air conditioner | `climate` | Supported |
 | Nature Remo E / E Lite smart meter | `sensor` | Supported, Energy Dashboard compatible |
 | Generic IR appliance | `switch` | Supported with assumed state |
-| Light | `light` | Supported with assumed state and two-step brightness |
+| Light | `light` | Supported with assumed state and stepped brightness |
 | TV | `media_player` | Supported with assumed state |
 | Nature Remo environmental sensors | `sensor` | Temperature, humidity, illuminance |
 
@@ -47,17 +47,33 @@ For Nature Remo E and E Lite:
 
 - Generic IR appliances are exposed as `switch` entities when on/off/toggle signals are available
 - Lights are exposed as `light` entities using Nature Remo light buttons and state
-- Light entities expose brightness, mapped onto the remote's discrete buttons:
+- Light entities expose brightness, mapped onto whichever preset buttons the
+  remote actually reports:
 
-  | Requested brightness | Button sent |
+  | Button on the remote | Brightness level it provides |
   | --- | --- |
-  | 0% | `off` (or `onoff` / `power`) |
-  | 1% up to the low threshold | `on` (or `on-favorite`) |
-  | Above the low threshold | `on-100` |
+  | `off` (or `onoff` / `power`) | Off |
+  | `on` (or `on-favorite`) | The configured low threshold, default 20% |
+  | `on-<n>`, e.g. `on-50` | `<n>`% |
+  | `on-100` | 100% |
 
-  The threshold defaults to 20% and can be changed at any time under
-  **Settings → Devices & services → Nature Remo → Configure**. Remotes that do
-  not expose a low preset fall back to full brightness.
+  A brightness request is rounded **up** to the nearest level the remote can
+  actually produce, so the light never comes on dimmer than asked for. A
+  request for 30% on a remote offering 20/50/100 sends `on-50`.
+
+  Most ceiling lights expose only `on` and `on-100`, which gives the common
+  two-step behaviour: 1–20% presses `on`, anything above presses `on-100`.
+
+  The threshold applies only to the bare `on` button, whose real output the
+  remote never reports. Change it under **Settings → Devices & services →
+  Nature Remo → Configure**.
+
+  The levels discovered for a given light are listed in its
+  `brightness_levels` attribute, alongside the raw `buttons` list — useful when
+  working out what your particular remote supports.
+
+  Remotes exposing only `on` treat it as full brightness rather than as a dim
+  step, and toggle-only remotes (`onoff` / `power`) get a single 100% level.
 - TVs are exposed as `media_player` entities using Nature Remo TV buttons and input state
 
 ## Compatibility and testing status
@@ -71,7 +87,8 @@ For Nature Remo E and E Lite:
 - IR-based appliances use **assumed state** because Nature Remo sends infrared commands and may not know the real device state
 - Switch support depends on registered signal icons in the Nature Remo app (`ico_on`, `ico_off`, or `ico_io`)
 - Light and TV support depends on the buttons exposed by Nature Remo's Cloud API for the appliance model
-- Light brightness is two-step, not continuous, because Nature Remo light appliances expose preset buttons rather than a dimming level
+- Light brightness is stepped, not continuous, because Nature Remo light appliances expose preset buttons rather than a dimming level
+- The Nature Remo Cloud API allows **30 requests per 5 minutes** per access token. Each poll costs two requests (appliances and devices), so the default 60-second interval uses 10 of them, leaving room for roughly 20 commands per 5 minutes. Sharing one token with other clients makes `429` responses more likely; they are surfaced as errors naming when the window resets
 - YAML configuration is supported only for backward-compatible import; new setups should use the Home Assistant UI
 
 ## Home Assistant Energy Dashboard support

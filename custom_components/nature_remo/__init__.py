@@ -1,7 +1,10 @@
 """The Nature Remo integration."""
 
+import asyncio
 import logging
+import time
 from datetime import timedelta
+from http import HTTPStatus
 from typing import Any, Dict
 
 import voluptuous as vol
@@ -26,6 +29,8 @@ _LOGGER = logging.getLogger(__name__)
 _RESOURCE = "https://api.nature.global/1"
 
 DOMAIN = "nature_remo"
+_HEADER_RATE_REMAINING = "X-Rate-Limit-Remaining"
+_HEADER_RATE_RESET = "X-Rate-Limit-Reset"
 PLATFORMS = [
     Platform.CLIMATE,
     Platform.SENSOR,
@@ -132,8 +137,12 @@ class NatureRemoAPI:
         """Get appliance and device list."""
         _LOGGER.debug("Trying to fetch appliance and device list from API.")
         try:
-            appliances_response = await self._request_json("GET", "/appliances")
-            devices_response = await self._request_json("GET", "/devices")
+            # Nature Remo allows 30 requests per 5 minutes, so each poll costs
+            # two of them; issue both at once to halve the poll latency.
+            appliances_response, devices_response = await asyncio.gather(
+                self._request_json("GET", "/appliances"),
+                self._request_json("GET", "/devices"),
+            )
         except HomeAssistantError as err:
             raise UpdateFailed(f"Error communicating with Nature Remo API: {err}") from err
 
@@ -156,10 +165,30 @@ class NatureRemoAPI:
                 headers=headers,
                 **kwargs,
             ) as response:
+                if response.status == HTTPStatus.TOO_MANY_REQUESTS:
+                    raise HomeAssistantError(
+                        f"{method} {path} was rate limited by Nature Remo "
+                        f"(30 requests per 5 minutes){_reset_hint(response.headers)}"
+                    )
+                _LOGGER.debug(
+                    "%s %s -> %s, rate limit remaining: %s",
+                    method,
+                    path,
+                    response.status,
+                    response.headers.get(_HEADER_RATE_REMAINING, "unknown"),
+                )
                 response.raise_for_status()
                 return await response.json()
         except ClientError as err:
             raise HomeAssistantError(f"{method} {path} failed: {err}") from err
+
+
+def _reset_hint(headers: Any) -> str:
+    """Describe when the Nature Remo rate limit window resets, if it says."""
+    reset = str(headers.get(_HEADER_RATE_RESET) or "")
+    if not reset.isdigit():
+        return ""
+    return f"; retry in {max(0, int(reset) - int(time.time()))}s"
 
 
 class NatureRemoBase(CoordinatorEntity):

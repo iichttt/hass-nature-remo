@@ -9,7 +9,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from propcache.api import cached_property
 
 from . import (
     CONF_LIGHT_LOW_LEVEL,
@@ -24,14 +23,15 @@ _LOGGER = logging.getLogger(__name__)
 BUTTON_OFF_PRIORITY = ("off", "onoff", "power")
 
 # Nature Remo light remotes expose discrete buttons rather than a dimming level.
-# "on" is the low/night-ish preset on most Japanese ceiling lights, "on-100" is
-# full output. Each tuple is tried in order until the remote actually has one.
-BUTTON_LOW_PRIORITY = ("on", "on-favorite", "onoff", "power")
-BUTTON_FULL_PRIORITY = ("on-100", "on", "on-favorite", "onoff", "power")
+# "on" is the dim/low preset on most Japanese ceiling lights; "on-<n>" buttons
+# name their own percentage. Toggle-only remotes get "onoff"/"power".
+BUTTON_LOW_PRIORITY = ("on", "on-favorite")
+BUTTON_TOGGLE_PRIORITY = ("onoff", "power")
 
 ATTR_BRIGHTNESS_PERCENT = "brightness_percent"
 ATTR_LAST_BUTTON = "last_button"
 ATTR_BUTTONS = "buttons"
+ATTR_BRIGHTNESS_LEVELS = "brightness_levels"
 
 
 async def async_setup_entry(
@@ -74,6 +74,7 @@ class NatureRemoLight(NatureRemoBase, LightEntity):
         self._api = api
         self._low_level = _clamp_percent(low_level, minimum=1)
         self._buttons = _button_names(appliance)
+        self._level_buttons = self._build_level_buttons()
         self._state: dict[str, Any] = {}
         self._is_on = False
         self._brightness = _percent_to_brightness(100)
@@ -89,15 +90,13 @@ class NatureRemoLight(NatureRemoBase, LightEntity):
         """Return the current brightness bucket as a 0-255 value."""
         return self._brightness if self._is_on else None
 
-    @cached_property
-    def supported_color_modes(self) -> set[ColorMode]:
-        """Return supported color modes."""
-        return {ColorMode.BRIGHTNESS}
-
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return Nature Remo-specific light state."""
-        attributes: dict[str, Any] = {ATTR_BUTTONS: self._buttons}
+        attributes: dict[str, Any] = {
+            ATTR_BUTTONS: self._buttons,
+            ATTR_BRIGHTNESS_LEVELS: sorted(self._level_buttons),
+        }
         if brightness := self._state.get("brightness"):
             attributes[ATTR_BRIGHTNESS_PERCENT] = brightness
         if last_button := self._state.get("last_button"):
@@ -117,14 +116,11 @@ class NatureRemoLight(NatureRemoBase, LightEntity):
             await self.async_turn_off()
             return
 
-        if percent <= self._low_level:
-            if (button := self._resolve_button(BUTTON_LOW_PRIORITY)) is not None:
-                await self._send_button(button, level=self._low_level)
-                return
-            # This remote has no low preset, so full brightness is the only
-            # way to honour an "on" request.
+        if not self._level_buttons:
+            raise HomeAssistantError(f"No matching Nature Remo light button found for {self.name}")
 
-        await self._post_button(BUTTON_FULL_PRIORITY, level=100)
+        level = self._snap(percent)
+        await self._send_button(self._level_buttons[level], level=level)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""
@@ -135,8 +131,47 @@ class NatureRemoLight(NatureRemoBase, LightEntity):
         """Handle updated data from the coordinator."""
         appliance = self.coordinator.data["appliances"][self._appliance_id]
         self._buttons = _button_names(appliance)
+        self._level_buttons = self._build_level_buttons()
         self._update((appliance.get("light") or {}).get("state"))
         self.async_write_ha_state()
+
+    def _build_level_buttons(self) -> Dict[int, str]:
+        """Map brightness percentage to the button that selects it.
+
+        Remotes name their presets: "on-100" is full output, "on-50" is half,
+        and a bare "on" is the dim preset whose real percentage the remote
+        never reports, so the configured low level stands in for it.
+        """
+        levels: Dict[int, str] = {
+            _clamp_percent(int(name[3:]), minimum=1): name
+            for name in self._buttons
+            if name.startswith("on-") and name[3:].isdigit()
+        }
+
+        if (low := self._resolve_button(BUTTON_LOW_PRIORITY)) is not None:
+            if levels:
+                levels.setdefault(self._low_level, low)
+            else:
+                # A bare "on" with nothing above it is this remote's only
+                # output level, so treat it as full rather than as a dim step.
+                levels[100] = low
+        elif not levels and (toggle := self._resolve_button(BUTTON_TOGGLE_PRIORITY)) is not None:
+            levels[100] = toggle
+
+        return levels
+
+    def _snap(self, percent: int) -> int:
+        """Round a percentage up to the nearest level the remote can produce.
+
+        Rounding up rather than to the nearest keeps the light from coming on
+        dimmer than asked for.
+        """
+        if not self._level_buttons:
+            return _clamp_percent(percent, minimum=1)
+        return min(
+            (level for level in sorted(self._level_buttons) if level >= percent),
+            default=max(self._level_buttons),
+        )
 
     def _resolve_button(self, candidates: Iterable[str]) -> str | None:
         """Return the first candidate button this remote actually has."""
@@ -179,13 +214,12 @@ class NatureRemoLight(NatureRemoBase, LightEntity):
             self._apply_level(percent)
 
     def _apply_level(self, percent: int) -> None:
-        """Snap a percentage onto a bucket and store it as HA brightness."""
+        """Snap a percentage onto a level and store it as HA brightness."""
         if percent <= 0:
             self._is_on = False
             return
         self._is_on = True
-        bucket = self._low_level if percent <= self._low_level else 100
-        self._brightness = _percent_to_brightness(bucket)
+        self._brightness = _percent_to_brightness(self._snap(percent))
 
     def _percent_from_state(self, state: Dict[str, Any]) -> int | None:
         """Derive a brightness percentage from a Nature Remo light state."""
