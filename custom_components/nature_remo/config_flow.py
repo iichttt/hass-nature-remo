@@ -4,7 +4,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlowResult
 from homeassistant.const import CONF_ACCESS_TOKEN
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import NumberSelector, NumberSelectorConfig, NumberSelectorMode
@@ -13,17 +13,36 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from . import (
     CONF_COOL_TEMP,
     CONF_HEAT_TEMP,
+    CONF_LIGHT_LOW_LEVEL,
     DEFAULT_COOL_TEMP,
     DEFAULT_HEAT_TEMP,
+    DEFAULT_LIGHT_LOW_LEVEL,
     DOMAIN,
     NatureRemoAPI,
 )
+
+
+def _low_level_selector() -> NumberSelector:
+    """Return the selector for the light low-brightness threshold."""
+    return NumberSelector(
+        NumberSelectorConfig(
+            min=1,
+            max=99,
+            mode=NumberSelectorMode.SLIDER,
+            unit_of_measurement="%",
+        )
+    )
 
 
 class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Nature Remo."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> "NatureRemoOptionsFlow":
+        """Return the options flow handler."""
+        return NatureRemoOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step."""
@@ -91,5 +110,31 @@ class NatureRemoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         mode=NumberSelectorMode.BOX,
                     )
                 ),
+                vol.Optional(
+                    CONF_LIGHT_LOW_LEVEL,
+                    default=user_input.get(CONF_LIGHT_LOW_LEVEL, DEFAULT_LIGHT_LOW_LEVEL),
+                ): _low_level_selector(),
             }
+        )
+
+
+class NatureRemoOptionsFlow(config_entries.OptionsFlow):
+    """Handle Nature Remo options."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        current = {**self.config_entry.data, **self.config_entry.options}
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_LIGHT_LOW_LEVEL,
+                        default=current.get(CONF_LIGHT_LOW_LEVEL, DEFAULT_LIGHT_LOW_LEVEL),
+                    ): _low_level_selector(),
+                }
+            ),
         )

@@ -7,7 +7,8 @@
         "data": {
           "access_token": "アクセストークン",
           "cool_temperature": "冷房の既定温度",
-          "heat_temperature": "暖房の既定温度"
+          "heat_temperature": "暖房の既定温度",
+          "light_low_level": "照明の減光しきい値"
         }
       }
     },
@@ -17,6 +18,17 @@
     },
     "abort": {
       "already_configured": "Nature Remo はすでに設定されています"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nature Remo のオプション",
+        "description": "この明るさ以下ではリモコンの「常夜灯・弱」ボタンを、それより明るい場合は全灯ボタンを送信します。",
+        "data": {
+          "light_low_level": "照明の減光しきい値"
+        }
+      }
     }
   }
 }

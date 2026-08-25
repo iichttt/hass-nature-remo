@@ -36,8 +36,12 @@ PLATFORMS = [
 
 CONF_COOL_TEMP = "cool_temperature"
 CONF_HEAT_TEMP = "heat_temperature"
+CONF_LIGHT_LOW_LEVEL = "light_low_level"
 DEFAULT_COOL_TEMP = 28
 DEFAULT_HEAT_TEMP = 20
+# Brightness percentages at or below this map to the remote's low preset;
+# anything above maps to full output.
+DEFAULT_LIGHT_LOW_LEVEL = 20
 DEFAULT_UPDATE_INTERVAL = timedelta(seconds=60)
 
 CONFIG_SCHEMA = vol.Schema(
@@ -47,6 +51,9 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Required(CONF_ACCESS_TOKEN): cv.string,
                 vol.Optional(CONF_COOL_TEMP, default=DEFAULT_COOL_TEMP): vol.Coerce(int),
                 vol.Optional(CONF_HEAT_TEMP, default=DEFAULT_HEAT_TEMP): vol.Coerce(int),
+                vol.Optional(CONF_LIGHT_LOW_LEVEL, default=DEFAULT_LIGHT_LOW_LEVEL): vol.All(
+                    vol.Coerce(int), vol.Range(min=1, max=99)
+                ),
             }
         )
     },
@@ -88,11 +95,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "api": api,
         "coordinator": coordinator,
-        "config": entry.data,
+        # Options override the values captured at setup time so they can be
+        # changed later without removing the integration.
+        "config": {**entry.data, **entry.options},
     }
+
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when its options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

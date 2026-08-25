@@ -136,6 +136,103 @@ def test_light_supports_toggle_only_remotes() -> None:
     assert light.is_on is True
 
 
+def test_light_maps_brightness_onto_low_and_full_buttons() -> None:
+    appliance = {
+        "id": "appliance-1",
+        "nickname": "Ceiling Light",
+        "type": "LIGHT",
+        "device": _device(),
+        "light": {
+            "buttons": [
+                {"name": "on", "image": "ico_on", "label": "Light_on"},
+                {"name": "on-100", "image": "ico_on", "label": "Light_all"},
+                {"name": "off", "image": "ico_off", "label": "Light_off"},
+            ],
+            "state": {"power": "off", "brightness": "0", "last_button": "off"},
+        },
+    }
+    api = FakeApi(
+        {"power": "on", "last_button": "on"},
+        {"power": "on", "last_button": "on-100"},
+        {"power": "off", "last_button": "off"},
+    )
+    light = NatureRemoLight(FakeCoordinator(), api, appliance, low_level=20)  # type: ignore[arg-type]
+
+    import asyncio
+
+    # 10% -> below the 20% threshold -> low preset.
+    asyncio.run(light.async_turn_on(brightness=26))
+    assert light.is_on is True
+    assert light.brightness == 51
+
+    # 80% -> above the threshold -> full brightness.
+    asyncio.run(light.async_turn_on(brightness=204))
+    assert light.brightness == 255
+
+    # 0% is an off request, not a dim request.
+    asyncio.run(light.async_turn_on(brightness=0))
+    assert light.is_on is False
+    assert light.brightness is None
+
+    assert api.calls == [
+        ("/appliances/appliance-1/light", {"button": "on"}),
+        ("/appliances/appliance-1/light", {"button": "on-100"}),
+        ("/appliances/appliance-1/light", {"button": "off"}),
+    ]
+
+
+def test_light_threshold_is_configurable() -> None:
+    appliance = {
+        "id": "appliance-1",
+        "nickname": "Ceiling Light",
+        "type": "LIGHT",
+        "device": _device(),
+        "light": {
+            "buttons": [
+                {"name": "on", "image": "ico_on", "label": "Light_on"},
+                {"name": "on-100", "image": "ico_on", "label": "Light_all"},
+                {"name": "off", "image": "ico_off", "label": "Light_off"},
+            ],
+            "state": {"power": "off", "brightness": "0", "last_button": "off"},
+        },
+    }
+    api = FakeApi({"power": "on", "last_button": "on"})
+    light = NatureRemoLight(FakeCoordinator(), api, appliance, low_level=60)  # type: ignore[arg-type]
+
+    import asyncio
+
+    # 50% would be "full" at the default threshold, but is "low" at 60%.
+    asyncio.run(light.async_turn_on(brightness=128))
+
+    assert api.calls == [("/appliances/appliance-1/light", {"button": "on"})]
+    assert light.brightness == 153
+
+
+def test_light_falls_back_to_full_button_when_low_button_missing() -> None:
+    appliance = {
+        "id": "appliance-1",
+        "nickname": "Ceiling Light",
+        "type": "LIGHT",
+        "device": _device(),
+        "light": {
+            "buttons": [
+                {"name": "on-100", "image": "ico_on", "label": "Light_all"},
+                {"name": "off", "image": "ico_off", "label": "Light_off"},
+            ],
+            "state": {"power": "off", "brightness": "0", "last_button": "off"},
+        },
+    }
+    api = FakeApi({"power": "on", "last_button": "on-100"})
+    light = NatureRemoLight(FakeCoordinator(), api, appliance, low_level=20)  # type: ignore[arg-type]
+
+    import asyncio
+
+    asyncio.run(light.async_turn_on(brightness=13))
+
+    assert api.calls == [("/appliances/appliance-1/light", {"button": "on-100"})]
+    assert light.brightness == 255
+
+
 def test_tv_exposes_features_and_sends_commands() -> None:
     appliance = {
         "id": "appliance-1",
@@ -175,3 +272,30 @@ def test_tv_exposes_features_and_sends_commands() -> None:
         ("/appliances/appliance-1/tv", {"button": "power"}),
         ("/appliances/appliance-1/tv", {"button": "input-bs"}),
     ]
+
+
+def test_light_treats_minimum_brightness_as_on_not_off() -> None:
+    appliance = {
+        "id": "appliance-1",
+        "nickname": "Ceiling Light",
+        "type": "LIGHT",
+        "device": _device(),
+        "light": {
+            "buttons": [
+                {"name": "on", "image": "ico_on", "label": "Light_on"},
+                {"name": "on-100", "image": "ico_on", "label": "Light_all"},
+                {"name": "off", "image": "ico_off", "label": "Light_off"},
+            ],
+            "state": {"power": "off", "brightness": "0", "last_button": "off"},
+        },
+    }
+    api = FakeApi({"power": "on", "last_button": "on"})
+    light = NatureRemoLight(FakeCoordinator(), api, appliance, low_level=20)  # type: ignore[arg-type]
+
+    import asyncio
+
+    # 1/255 rounds to 0% but is still an "on" request.
+    asyncio.run(light.async_turn_on(brightness=1))
+
+    assert api.calls == [("/appliances/appliance-1/light", {"button": "on"})]
+    assert light.is_on is True

@@ -21,7 +21,7 @@ This repository is a fork of [yutoyazaki/hass-nature-remo](https://github.com/yu
 | Air conditioner | `climate` | Supported |
 | Nature Remo E / E Lite smart meter | `sensor` | Supported, Energy Dashboard compatible |
 | Generic IR appliance | `switch` | Supported with assumed state |
-| Light | `light` | Supported with assumed state |
+| Light | `light` | Supported with assumed state and two-step brightness |
 | TV | `media_player` | Supported with assumed state |
 | Nature Remo environmental sensors | `sensor` | Temperature, humidity, illuminance |
 
@@ -47,6 +47,17 @@ For Nature Remo E and E Lite:
 
 - Generic IR appliances are exposed as `switch` entities when on/off/toggle signals are available
 - Lights are exposed as `light` entities using Nature Remo light buttons and state
+- Light entities expose brightness, mapped onto the remote's discrete buttons:
+
+  | Requested brightness | Button sent |
+  | --- | --- |
+  | 0% | `off` (or `onoff` / `power`) |
+  | 1% up to the low threshold | `on` (or `on-favorite`) |
+  | Above the low threshold | `on-100` |
+
+  The threshold defaults to 20% and can be changed at any time under
+  **Settings → Devices & services → Nature Remo → Configure**. Remotes that do
+  not expose a low preset fall back to full brightness.
 - TVs are exposed as `media_player` entities using Nature Remo TV buttons and input state
 
 ## Compatibility and testing status
@@ -60,6 +71,7 @@ For Nature Remo E and E Lite:
 - IR-based appliances use **assumed state** because Nature Remo sends infrared commands and may not know the real device state
 - Switch support depends on registered signal icons in the Nature Remo app (`ico_on`, `ico_off`, or `ico_io`)
 - Light and TV support depends on the buttons exposed by Nature Remo's Cloud API for the appliance model
+- Light brightness is two-step, not continuous, because Nature Remo light appliances expose preset buttons rather than a dimming level
 - YAML configuration is supported only for backward-compatible import; new setups should use the Home Assistant UI
 
 ## Home Assistant Energy Dashboard support

@@ -7,7 +7,8 @@
         "data": {
           "access_token": "Access token",
           "cool_temperature": "Default cooling temperature",
-          "heat_temperature": "Default heating temperature"
+          "heat_temperature": "Default heating temperature",
+          "light_low_level": "Light low-brightness threshold"
         }
       }
     },
@@ -17,6 +18,17 @@
     },
     "abort": {
       "already_configured": "Nature Remo is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nature Remo options",
+        "description": "Brightness at or below this level presses the remote's low button; anything higher presses the full-brightness button.",
+        "data": {
+          "light_low_level": "Light low-brightness threshold"
+        }
+      }
     }
   }
 }
