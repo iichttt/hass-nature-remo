@@ -2,11 +2,11 @@
   "domain": "nature_remo",
   "name": "Nature Remo",
   "codeowners": [
-    "@hannoeru"
+    "@iichttt"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/hannoeru/hass-nature-remo",
+  "documentation": "https://github.com/iichttt/hass-nature-remo",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/hannoeru/hass-nature-remo/issues",
+  "issue_tracker": "https://github.com/iichttt/hass-nature-remo/issues",
   "version": "0.8.0"
 }
