@@ -214,9 +214,9 @@ uv run pytest
 ```text
 hass-nature-remo/
 ├── .github/workflows/                 # CI, HACS/hassfest validation, and release packaging
-├── brand/icon.png                     # HACS/Home Assistant brand icon
 ├── custom_components/nature_remo/     # HACS integration package
 │   ├── __init__.py                    # Main integration setup
+│   ├── brand/icon.png                 # HACS/Home Assistant brand icon
 │   ├── climate.py                     # Climate entity implementation
 │   ├── config_flow.py                 # UI setup and YAML import flow
 │   ├── echonet.py                     # ECHONET Lite smart-meter helpers
